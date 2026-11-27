@@ -100,7 +100,7 @@ javascript:(async () => {
     .map(s => ({
       s,
       t: [...s.querySelectorAll('text')].filter(
-        e => /^\d+$/.test((e.textContent || '').trim()) && e.getBoundingClientRect().width > 0
+        e => /^(\d+|[×x]\d+)$/i.test((e.textContent || '').trim()) && e.getBoundingClientRect().width > 0
       )
     }))
     .sort((a, b) => b.t.length - a.t.length);
@@ -111,8 +111,10 @@ javascript:(async () => {
 
   const items = texts.map(el => {
     const r = el.getBoundingClientRect();
+    const txt = el.textContent.trim();
+    const val = /^[×x]/i.test(txt) ? -parseInt(txt.slice(1), 10) : parseInt(txt, 10);
     return {
-      val: parseInt(el.textContent.trim(), 10),
+      val,
       x: r.left + r.width / 2,
       y: r.top + r.height / 2
     };
@@ -160,14 +162,15 @@ javascript:(async () => {
             const nr = r + dr, nc = c + dc;
             if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
             const tv = g[nr][nc];
-            if (tv === v || tv === null) {
+            const canMove = tv === null || (v > 0 && tv === v) || (v > 0 && tv < 0) || (v < 0 && tv > 0);
+            if (canMove) {
               const ng = g.map(row => [...row]);
               ng[r][c] = null;
-              ng[nr][nc] = tv === v ? v * 2 : v;
+              ng[nr][nc] = tv === null ? v : (v > 0 && tv > 0 ? v * 2 : Math.abs(v * tv));
               const k = ng.flat().join(',');
               if (!vis.has(k)) {
                 vis.add(k);
-                q.push({ g: ng, cnt: tv === v ? cnt - 1 : cnt, m: [...m, [r, c, nr, nc]] });
+                q.push({ g: ng, cnt: tv === null ? cnt : cnt - 1, m: [...m, [r, c, nr, nc]] });
               }
             }
           }
@@ -180,8 +183,8 @@ javascript:(async () => {
   const moves = bfs();
   if (!moves) return alert('Keine Lösung gefunden!');
 
-  const fire = (type, x, y) => {
-    (document.elementFromPoint(x, y) || svg).dispatchEvent(new PointerEvent(type, {
+  const fire = (el, type, x, y) => {
+    (el || document.elementFromPoint(x, y) || svg).dispatchEvent(new PointerEvent(type, {
       bubbles: true,
       cancelable: true,
       view: window,
@@ -198,12 +201,15 @@ javascript:(async () => {
     if (i === moves.length - 1) await new Promise(r => setTimeout(r, 5000));
     const [r, c, nr, nc] = moves[i];
     const p1 = coords[r][c], p2 = coords[nr][nc];
-    fire('pointerdown', p1.x, p1.y);
-    await new Promise(r => setTimeout(r, 30));
-    fire('pointermove', p2.x, p2.y);
-    await new Promise(r => setTimeout(r, 30));
-    fire('pointerup', p2.x, p2.y);
-    await new Promise(r => setTimeout(r, 60));
+    const el = document.elementFromPoint(p1.x, p1.y) || svg;
+    fire(el, 'pointerdown', p1.x, p1.y);
+    await new Promise(r => setTimeout(r, 40));
+    fire(el, 'pointermove', (p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+    await new Promise(r => setTimeout(r, 40));
+    fire(el, 'pointermove', p2.x, p2.y);
+    await new Promise(r => setTimeout(r, 40));
+    fire(el, 'pointerup', p2.x, p2.y);
+    await new Promise(r => setTimeout(r, 350));
   }
 })()
 ```
